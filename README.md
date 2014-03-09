@@ -4,7 +4,7 @@
 
 [Webmention](http://webmention.org) is a simple way to automatically notify any URL when you link to it on your site. From the receiver's perpective, it is a way to request notification when other sites link to it.
 
-Version 0.5 is a stable beta that covers the basic webmention sending and receiving. It does not handle displaying webmentions on the public site yet. That and other features will be coming in subsequent versions.
+Version 0.5 is a stable beta that covers the basic webmention sending and receiving. It does not handle displaying webmentions on your site yet. That and other features will be coming in subsequent versions.
 
 ## Features
 * Webmention endpoint discovery
@@ -14,13 +14,13 @@ Version 0.5 is a stable beta that covers the basic webmention sending and receiv
 * Whitelist or blacklist hostnames
 
 ## Customizations
-1. By default, the webmention endpoint is the rather long and messy URL <code>/action.php?action=plugin&name=Webmention&type=endpoint</code>. You can use mod_rewrite (RewriteRule) to simplify this to, say, <code>/webmention</code>.
+1.  By default, the webmention endpoint is the rather long and messy URL <code>action.php?action=plugin&name=Webmention&type=endpoint</code>. You can use mod_rewrite (RewriteRule) to simplify this to, say, <code>/webmention</code>.
 
-If you do so, under the plugin options enter the full path to the webmention endpoint.
+    If you do so, under the plugin options enter the full path to the webmention endpoint.
 
-2. If you use a non-standard permalink structure (as I do), then you may edit the buildPermalink() method to return your permalink structure. This method is used when sending webmentions from your site.
+2.  If you use a non-standard permalink structure (as I do), then you may edit the buildPermalink() method to return your permalink structure. This method is used when sending webmentions from your site.
 
-The Nucleus default <code>?itemid=X</code> URLs should always work, though. It's just a matter of whether the recipient of the webmention displays the source URL anywhere.
+    The Nucleus default <code>?itemid=X</code> URLs should always work, though. It's just a matter of whether the recipient of the webmention displays the source URL anywhere.
 
 ## Processing Webmentions
 When a webmention is received, some basic checks are performed to verify the source and target URLs are supplied. It also verifies that the target URL is a valid Nucleus post. If the webmention fails these checks, an appropriate response is sent to the sender.
