@@ -36,3 +36,8 @@ If you trust webmentions from a specific hostname, you can add it to the whiteli
 
 ## Blacklist
 If you receive spam webmentions from a specific hostname, you can add it to the blacklist in the admin area. When pending webmentions are processed, these will automatically be marked as "do not display" and flagged as blacklisted. It will not appear in the admin area. In the future, functionality to review these may be added.
+
+## IndieWeb
+The IndieWeb movement is about owning your data. It encourages you to create and publish on your own site and optionally syndicate to third-party sites. Webmention is one of the core building blocks of this movement.
+
+Learn more and get involved by visiting <http://indiewebcamp.com>.
