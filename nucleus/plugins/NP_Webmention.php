@@ -369,6 +369,144 @@ END;
 
 
 	/**
+	 * This method handles the skin/template variables
+	 * @param object &$item
+	 * @param string $field
+	 * @access public
+	 **/
+	public function doSkinVar($skin_type, $type = '')
+	{
+		/*
+		# For debugging
+		error_reporting(E_ALL);
+		ini_set('display_errors', 1);
+		*/
+
+		global $CONF;
+
+		# if: display all approved webmentions
+		if ( $type == 'all' )
+		{
+			$log_table = $this->table_received_log;
+			$item_table = sql_table('item');
+
+			sql_query("SET @@session.time_zone = 'UTC'");
+
+			$query = <<< END
+SELECT 
+	`w`.`author_photo`,
+	`w`.`author_url`,
+	`w`.`author_name`,
+	`w`.`type`,
+	IF(`w`.`type` = 'reply', 'replied to', 'mentioned') AS `verb`,
+	`i`.`ititle` AS `post_title`,
+	`l`.`target`,
+	`w`.`url`,
+	`w`.`content`,
+	`w`.`updated`
+FROM 
+	`{$this->table}` AS `w`
+	LEFT OUTER JOIN `{$item_table}` AS `i` ON `w`.`post_id` = `i`.`inumber`
+	LEFT OUTER JOIN `{$log_table}` AS `l` ON `w`.`log_id` = `l`.`id`
+WHERE 
+	`is_displayed` = 1
+	AND `is_blacklisted` = 0
+ORDER BY 
+	`updated` DESC
+LIMIT 20
+END;
+			$result = sql_query($query);
+
+			# if: one or more results
+			if ( sql_num_rows($result) > 0 )
+			{
+				$hostname = parse_url($CONF['IndexURL'], PHP_URL_HOST);
+
+				print <<< END
+	<div class="h-feed">
+
+		<h1 class="p-name"> {$hostname} mentions </h1>
+		<a class="u-url" href=""></a>
+
+END;
+
+				# loop: each row
+				while ( $row = sql_fetch_assoc($result) )
+				{
+					$h_card = sprintf('<a href="%s" class="p-author h-card"><img src="%s" alt="%s" title="%3$s" class="u-photo" /></a> ',
+						$row['author_url'],
+						$row['author_photo'],
+						$row['author_name']
+					);
+
+					$webmention_context = sprintf('<p class="reply-context"> <strong>%s</strong> %s “<a href="%s" class="u-in-reply-to">%s</a>” </p>',
+						$row['author_name'],
+						$row['verb'],
+						$row['target'],
+						$row['post_title']
+					);
+
+					switch ( $row['type'] )
+					{
+						case 'reply':
+							$content = sprintf('<p class="p-content p-name"> %s </p>', 
+								$row['content']
+							);
+						break;
+
+						default:
+							$content = '';
+						break;
+					}
+
+					$published_timezone = new DateTimeZone('UTC');
+					$published = new DateTime($row['updated'], $published_timezone);
+
+					# get the timezone plugin option
+					$timezone = $this->getOption('timezone');
+
+					# if: timezone option is not UTC; convert the date-time
+					if ( $timezone != 'UTC' )
+					{
+						$convert_timezone = new DateTimeZone($timezone);
+						$published->setTimezone($convert_timezone);
+					} # end if
+
+					$via = parse_url($row['url'], PHP_URL_HOST);
+
+					$published = sprintf('<p class="reply-date"> <time class="dt-published" datetime="%s" title="via %s"><a href="%s" class="u-url">%s</a></time> </p>',
+						$published->format('c'),
+						$via,
+						$row['url'],
+						$published->format('F j, Y g:ia T')
+					);
+
+					echo '<div class="mention h-entry">';
+
+					echo sprintf('<div class="avatar"> %s </div>',
+						$h_card
+					);
+
+					echo sprintf('<div class="note"> %s %s %s </div>',
+						$webmention_context,
+						$content,
+						$published
+					);
+
+					echo '</div> <!-- /.h-entry -->';
+
+					echo '<hr />';
+				} # end loop
+
+				echo '</div> <!--/.h-feed -->';
+			} # end if
+
+		} # end if
+
+	} # end method doSkinVar()
+
+
+	/**
 	 * This method handles processing a post and sending webmentions to the URLs in it
 	 * @param int $item_id
 	 * @param string $text 
