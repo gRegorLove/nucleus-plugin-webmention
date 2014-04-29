@@ -251,31 +251,34 @@ END;
 
 		$query = <<< END
 CREATE TABLE IF NOT EXISTS `{$this->table}` (
-		`id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-		`post_id` int(10) unsigned NOT NULL DEFAULT '0',
-		`log_id` int(10) unsigned NOT NULL DEFAULT '0',
-		`type` enum('reply','mention') NOT NULL DEFAULT 'mention',
-		`content` text,
-		`url` varchar(255) NOT NULL DEFAULT '',
-		`author_name` varchar(255) NOT NULL DEFAULT '',
-		`author_photo` varchar(255) NOT NULL DEFAULT '',
-		`author_logo` varchar(255) NOT NULL DEFAULT '',
-		`author_url` varchar(255) NOT NULL DEFAULT '',
-		`published` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-		`updated` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-		`published_offset` tinyint(1) unsigned NOT NULL DEFAULT '0',
-		`updated_offset` tinyint(1) unsigned NOT NULL DEFAULT '0',
-		`is_displayed` tinyint(1) unsigned NOT NULL DEFAULT '0',
-		`is_blacklisted` tinyint(1) unsigned NOT NULL DEFAULT '0',
-		PRIMARY KEY (`id`),
-		UNIQUE KEY `POSTWEBMENTION` (`post_id`,`log_id`)
+	`id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+	`post_id` int(10) unsigned NOT NULL DEFAULT '0',
+	`log_id` int(10) unsigned NOT NULL DEFAULT '0',
+	`type` enum('reply','mention') NOT NULL DEFAULT 'mention',
+	`is_like` tinyint(3) unsigned NOT NULL DEFAULT '0',
+	`is_repost` tinyint(3) unsigned NOT NULL DEFAULT '0',
+	`is_rsvp` tinyint(3) unsigned NOT NULL DEFAULT '0',
+	`content` text,
+	`url` varchar(255) NOT NULL DEFAULT '',
+	`author_name` varchar(255) NOT NULL DEFAULT '',
+	`author_photo` varchar(255) NOT NULL DEFAULT '',
+	`author_logo` varchar(255) NOT NULL DEFAULT '',
+	`author_url` varchar(255) NOT NULL DEFAULT '',
+	`published` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`updated` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
+	`published_offset` tinyint(1) unsigned NOT NULL DEFAULT '0',
+	`updated_offset` tinyint(1) unsigned NOT NULL DEFAULT '0',
+	`is_displayed` tinyint(1) unsigned NOT NULL DEFAULT '0',
+	`is_blacklisted` tinyint(1) unsigned NOT NULL DEFAULT '0',
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `POSTWEBMENTION` (`post_id`,`log_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8
 END;
 		sql_query($query);
 
+		$this->createOption('timezone', 'Timezone to use when displaying webmentions. Refer to PHP list of supported timezones.', 'text', 'UTC');
 		$this->createOption('cron_key', 'Secret key for running the cron', 'text', 'nuMuzup3sW');
 		$this->createOption('custom_endpoint', 'Custom webmention endpoint', 'text');
-
 		$this->createOption('deletetables', 'Delete this plugin\'s tables and data when uninstalling?', 'yesno', 'no');
 	} # end method install()
 
@@ -899,18 +902,19 @@ END;
 		include('webmention/Mf2/Functions.php');
 
 		$default_fields = array(
-			'post_id' => '',
-			'type' => 'mention',
-			'content' => '',
-			'url' => '',
-			'author_name' => '',
-			'author_photo' => '',
-			'author_logo' => '',
-			'author_url' => '',
-			'published' => '',
-			'updated' => '',
-			'published_offset' => '',
-			'updated_offset' => ''
+			'post_id'			=> '',
+			'type'				=> 'mention',
+			'is_like'			=> 0,
+			'content'			=> '',
+			'url'				=> '',
+			'author_name'		=> '',
+			'author_photo'		=> '',
+			'author_logo'		=> '',
+			'author_url'		=> '',
+			'published'			=> '',
+			'updated'			=> '',
+			'published_offset'	=> '',
+			'updated_offset'	=> ''
 		);
 
 		$sql = <<< END
@@ -994,7 +998,15 @@ END;
 						$this->parseDefaultAuthor($row['source'], $webmention);
 					} # end if: microformat(s) found...		
 
+					# if: if like-of matches target, set the flag
+					if ( $webmention['like-of'] == $row['target'] )
+					{
+						$webmention['is_like'] = 1;
+					}
+
 					$webmention = array_merge($default_fields, $webmention);
+
+					echo '<pre>', print_r($webmention); exit;
 
 					$parsed_content = ( empty($parsed_content) ) ? '' : json_encode($parsed_content);
 					$sql_parsed_content = sql_real_escape_string($parsed_content);
@@ -1312,13 +1324,25 @@ END;
 		if ( $entries )
 		{
 			$entry = reset($entries);
+			// echo '<pre>', print_r($entry); exit;
 
 			$in_reply_to = Mf2\getPlaintext($entry, 'in-reply-to');
+			$like_of = Mf2\getPlaintext($entry, 'like-of');
+			$repost_of = Mf2\getPlaintext($entry, 'repost-of');
+			$rsvp = Mf2\getPlaintext($entry, 'rsvp');
+
 			$webmention['type'] = ( $in_reply_to ) ? 'reply' : 'mention';
+
+			$webmention['in-reply-to'] = $in_reply_to;
+			$webmention['like-of'] = $like_of;
+
+			# separate flags for webmentions of multiple types
+			$webmention['is_like'] = ( $like_of ) ? 1 : 0;
+			$webmention['is_repost'] = ( $repost_of ) ? 1 : 0;
+			$webmention['is_rsvp'] = ( $rsvp ) ? 1 : 0;
 
 			$webmention['content'] = Mf2\getPlaintext($entry, 'content');
 			$url = Mf2\getPlaintext($entry, 'url');
-			#$webmention['url'] = Mf2\getPlaintext($entry, 'url');
 			$webmention['url'] = ( empty($url) ) ? $webmention['url'] : $url;
 
 			$published = Mf2\getDateTimeProperty('published', $entry, TRUE);
