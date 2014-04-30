@@ -23,7 +23,7 @@
 	$PluginAdmin = new PluginAdmin('Webmention');
 	$PluginAdmin->start();
 
-	if ( $_GET['pmode'] == 'parse' )
+	if ( $_GET['mode'] == 'parse' )
 	{
 		$PluginAdmin->plugin->processWebmentions();
 	}

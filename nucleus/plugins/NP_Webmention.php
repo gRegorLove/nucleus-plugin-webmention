@@ -385,10 +385,10 @@ END;
 		ini_set('display_errors', 1);
 		*/
 
-		global $CONF;
+		global $CONF, $itemid, $member;
 
 		# if: display all approved webmentions
-		if ( $type == 'all' )
+		if ( $type == 'mentions' )
 		{
 			$log_table = $this->table_received_log;
 			$item_table = sql_table('item');
@@ -1029,8 +1029,10 @@ END;
 			$content_type = 'text/html';
 		}
 
+		$is_www_form_urlencoded = strpos(serverVar('CONTENT_TYPE'), 'application/x-www-form-urlencoded');
+
 		# if: request is the correct content-type
-		if ( (serverVar('REQUEST_METHOD') === 'POST') && (serverVar('CONTENT_TYPE') === 'application/x-www-form-urlencoded') )
+		if ( (serverVar('REQUEST_METHOD') === 'POST') && ($is_www_form_urlencoded !== FALSE) )
 		{
 			$source = requestVar('source');
 			$target = requestVar('target');
