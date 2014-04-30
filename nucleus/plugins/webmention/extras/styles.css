@@ -1,0 +1,43 @@
+.h-feed hr {
+	border: 0;
+	height: 1px;
+	background-image: -webkit-linear-gradient(left, rgba(136,136,136,0), rgba(136,136,136,0.75), rgba(136,136,136,0)); 
+	background-image:    -moz-linear-gradient(left, rgba(136,136,136,0), rgba(136,136,136,0.75), rgba(136,136,136,0)); 
+	background-image:     -ms-linear-gradient(left, rgba(136,136,136,0), rgba(136,136,136,0.75), rgba(136,136,136,0)); 
+	background-image:      -o-linear-gradient(left, rgba(136,136,136,0), rgba(136,136,136,0.75), rgba(136,136,136,0)); 
+}
+
+.h-feed .mention {
+	margin: 1.75em 0;
+	padding-bottom: 0;
+}
+
+	.mention .avatar {
+		display: inline-block;
+		width: 50px; 
+		vertical-align: top;
+	}
+
+		.avatar .u-photo {
+			-webkit-border-radius: 5px;
+			-moz-border-radius: 5px;
+			border-radius: 5px;
+			width: 48px;
+		}
+
+	.mention .note {
+		display: inline-block;
+		width: 535px;
+		margin-left: 10px;
+		vertical-align: top;
+	}
+
+		.note .reply-context {
+			font-size: 0.8em;
+		}
+
+		.note .reply-date {
+			font-size: 0.8em;
+			text-align: right;
+			margin-bottom: 0;
+		}
