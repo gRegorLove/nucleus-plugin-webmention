@@ -504,6 +504,261 @@ END;
 				echo '</div> <!--/.h-feed -->';
 			} # end if
 
+		}
+		# else if: responses
+		else if ( $type == 'responses' )
+		{
+			sql_query("SET @@session.time_zone = 'UTC'");
+
+			$comment_table = sql_table('comment');
+			$member_table = sql_table('member');
+
+			$query = <<< END
+SELECT
+	`w`.`id` AS `webmention_id`,
+	0 AS `comment_id`,
+	`w`.`type`,
+	`w`.`is_like`,
+	`w`.`is_repost`,
+	`w`.`is_rsvp`,
+	`w`.`content`,
+	`w`.`url`,
+	`w`.`author_name`,
+	`w`.`author_photo`,
+	`w`.`author_url`,
+	`w`.`updated`
+FROM
+	`{$this->table}` AS `w`
+WHERE
+	`is_displayed` = 1
+	AND `post_id` = {$itemid}
+
+UNION ALL
+
+SELECT
+	0 AS `webmention_id`,
+	`c`.`cnumber` AS `comment_id`,
+	'local' AS `type`,
+	0 AS `is_like`,
+	0 AS `is_repost`,
+	0 AS `is_rsvp`,
+	`cbody` AS `content`,
+	'' AS `url`,
+	IF (`cuser` = '', `mname`, `cuser`) AS `author_name`,
+	'' AS `author_photo`,
+	IF(`cmail` = '', `murl`, `cmail`) AS `author_url`,
+	`ctime` AS `updated`
+FROM
+	`{$comment_table}` AS `c`
+	LEFT OUTER JOIN `{$member_table}` ON `cmember` = `mnumber`
+WHERE
+	`c`.`citem` = $itemid
+
+ORDER 
+	BY `updated` ASC
+END;
+			$result = sql_query($query);
+
+			# if: one or more results
+			if ( sql_num_rows($result) > 0 )
+			{
+				$hostname = parse_url($CONF['IndexURL'], PHP_URL_HOST);
+
+				print <<< END
+	<style type="text/css">
+		.responses .note p {
+			font-size: 0.8em;
+			line-height: 1.6;
+		}
+	</style>
+
+	<div class="responses">
+END;
+
+				# loop: each row
+				while ( $row = sql_fetch_assoc($result) )
+				{
+
+					# if: local comment
+					if ( $row['type'] == 'local' )
+					{
+						$h_card = '&nbsp;';
+
+						$webmention_context = sprintf('<p class="reply-context"> <strong><a href="%s" class="p-author h-card">%s</a></strong>: </p>',
+							$row['author_url'],
+							$row['author_name']
+						);
+
+						$content = sprintf('<div class="p-content p-name"> %s </div>',
+							$row['content']
+						);
+
+						# get the timezone plugin option
+						$timezone = $this->getOption('timezone');
+						$convert_timezone = new DateTimeZone($timezone);
+						$published = new DateTime($row['updated'], $convert_timezone);
+
+						$published = sprintf('<p class="reply-date"> <time class="dt-published" datetime="%s"><a href="%s" class="u-url">%s</a></time> </p>',
+							$published->format('c'),
+							'#c' . $row['comment_id'],
+							$published->format('F j, Y g:ia T')
+						);
+					}
+					# else: webmention
+					else
+					{
+						$h_card = sprintf('<a href="%s" class="p-author h-card"><img src="%s" alt="%s" title="%3$s" class="u-photo" /></a> ',
+							$row['author_url'],
+							$row['author_photo'],
+							$row['author_name']
+						);
+
+						$verb = ( $row['type'] == 'mention' ) ? 'mentioned this.' : '';
+
+						$webmention_context = sprintf('<p class="reply-context"> <strong><a href="%s">%s</a></strong> %s </p>',
+							$row['author_url'],
+							$row['author_name'],
+							$verb
+						);
+
+						switch ( $row['type'] )
+						{
+							case 'reply':
+								$content = sprintf('<p class="p-content p-name"> %s </p>', 
+									$row['content']
+								);
+							break;
+
+							default:
+								$content = '';
+							break;
+						}
+
+						$published_timezone = new DateTimeZone('UTC');
+						$published = new DateTime($row['updated'], $published_timezone);
+
+						# get the timezone plugin option
+						$timezone = $this->getOption('timezone');
+
+						# if: timezone option is not UTC; convert the date-time
+						if ( $timezone != 'UTC' )
+						{
+							$convert_timezone = new DateTimeZone($timezone);
+							$published->setTimezone($convert_timezone);
+						} # end if
+
+						$via = parse_url($row['url'], PHP_URL_HOST);
+
+						$published = sprintf('<p class="reply-date"> <time class="dt-published" datetime="%s" title="via %s"><a href="%s" class="u-url">%s</a></time> </p>',
+							$published->format('c'),
+							$via,
+							$row['url'],
+							$published->format('F j, Y g:ia T')
+						);
+					} # end if
+
+					echo '<div class="mention p-comment h-cite">';
+
+					echo sprintf('<div class="avatar"> %s </div>',
+						$h_card
+					);
+
+					echo sprintf('<div class="note"> %s %s %s </div>',
+						$webmention_context,
+						$content,
+						$published
+					);
+
+					echo '</div> <!-- /.h-cite -->';
+
+					echo '<hr />';
+				} # end loop: each row
+
+				echo '</div> <!--/.h-feed -->';
+			} # end if
+
+		}
+		# else if: webmention form
+		else if ( $type == 'form' )
+		{
+			$endpoint = $this->getOption('custom_endpoint');
+
+			# if: no custom endpoint; build the action.php link
+			if ( empty($endpoint) )
+			{
+				$endpoint = sprintf('%saction.php?action=plugin&name=Webmention&type=endpoint', $CONF['IndexURL']);
+			} # end if
+
+			// echo '<pre>', print_r($_SERVER), '</pre>';
+
+			print <<< END
+	<form method="post" action="{$endpoint}" id="webmention_form">
+	<p> <label for="i_webmention_source">Have you written a response to this? Let me know the link:</label> </p>
+	<p> <input type="text" name="source" id="i_webmention_source" required /> </p>
+	<div id="webmention_message"></div>
+	<p> <input type="submit" value="Send" /> </p>
+	<input type="hidden" name="target" value="{$_SERVER['SCRIPT_URI']}" />
+	</form>
+
+	<script>
+		$(document).ready(function() {
+			$('#webmention_form').on('submit', function(e) {
+				e.preventDefault();
+
+				var element = $(this);
+
+				$.ajax({
+					url: '{$endpoint}',
+					type: 'POST',
+					dataType: 'json',
+					accepts: {
+						json: 'application/json'
+					},
+					data: {
+						source: element.find('input[name="source"]').val(),
+						target: element.find('input[name="target"]').val()
+					},
+					statusCode: {
+						202: function(data) {
+							message = 'Thanks! ' + data.response;
+							webmention_message(message, 'success');
+						},
+						400: function(e) {
+							message = 'Uh-oh, an error occured. ' + e.responseJSON.response;
+							webmention_message(message, 'attention');
+						},
+						500: function(e) {
+							message = 'Uh-oh, an error occured. ' + e.responseJSON.response;
+							webmention_message(message, 'attention');
+						}
+
+					}
+				});
+
+			});
+
+			function webmention_message(message, css_class)
+			{
+
+				if ( $('#webmention_message').length )
+				{
+					$('#webmention_message').slideUp(400, function() {
+						$(this).empty();
+						$('</p>').text(message).addClass(css_class).appendTo($(this));
+						$(this).slideDown(400);
+					});
+				}
+				else
+				{
+					$('</p>').text(message).addClass(css_class).appendTo($('#webmention_message'));
+
+					$('#webmention_message').slideDown(400);
+				}
+
+			}
+		});
+	</script>
+END;
 		} # end if
 
 	} # end method doSkinVar()
@@ -755,6 +1010,11 @@ END;
 
 		# TODO: Take into account the q= quality factor of Accept: headers.
 		$http_accept = serverVar('HTTP_ACCEPT');
+
+		if ( $http_accept_override = requestVar('HTTP_ACCEPT') )
+		{
+			$http_accept = $http_accept_override;
+		}
 
 		if ( strpos($http_accept, 'application/json') !== FALSE )
 		{
