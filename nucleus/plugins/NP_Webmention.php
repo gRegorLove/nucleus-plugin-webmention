@@ -264,7 +264,7 @@ CREATE TABLE IF NOT EXISTS `{$this->table}` (
 	`author_photo` varchar(255) NOT NULL DEFAULT '',
 	`author_logo` varchar(255) NOT NULL DEFAULT '',
 	`author_url` varchar(255) NOT NULL DEFAULT '',
-	`published` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`published` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	`updated` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 	`published_offset` tinyint(1) unsigned NOT NULL DEFAULT '0',
 	`updated_offset` tinyint(1) unsigned NOT NULL DEFAULT '0',
@@ -1167,6 +1167,8 @@ END;
 			'post_id'			=> '',
 			'type'				=> 'mention',
 			'is_like'			=> 0,
+			'is_repost'			=> 0,
+			'is_rsvp'			=> 0,
 			'content'			=> '',
 			'url'				=> '',
 			'author_name'		=> '',
@@ -1294,6 +1296,9 @@ END;
 
 					$sql_post_id = intval($row['post_id']);
 					$sql_type = sql_real_escape_string($webmention['type']);
+					$sql_is_like = intval($webmention['is_like']);
+					$sql_is_repost = intval($webmention['is_repost']);
+					$sql_is_rsvp = intval($webmention['is_rsvp']);
 					$sql_content = sql_real_escape_string($webmention['content']);
 					$sql_url = sql_real_escape_string($webmention['url']);
 					$sql_author_name = sql_real_escape_string($webmention['author_name']);
@@ -1312,6 +1317,9 @@ INSERT INTO `{$this->table}` SET
 	`post_id` = $sql_post_id,
 	`log_id` = $sql_log_id,
 	`type` = '$sql_type',
+	`is_like` = $sql_is_like,
+	`is_repost` = $sql_is_repost,
+	`is_rsvp` = $sql_is_rsvp,
 	`content` = '$sql_content',
 	`url` = '$sql_url',
 	`author_name` = '$sql_author_name',
@@ -1322,9 +1330,12 @@ INSERT INTO `{$this->table}` SET
 	`updated` = '$sql_updated',
 	`published_offset` = '$sql_published_offset',
 	`updated_offset` = '$sql_updated_offset',
-	`is_displayed` = '$sql_is_displayed',
-	`is_blacklisted` = '$sql_is_blacklisted'
+	`is_displayed` = $sql_is_displayed,
+	`is_blacklisted` = $sql_is_blacklisted
 ON DUPLICATE KEY UPDATE
+	`is_like` = $sql_is_like,
+	`is_repost` = $sql_is_repost,
+	`is_rsvp` = $sql_is_rsvp,
 	`content` = '$sql_content',
 	`url` = '$sql_url',
 	`author_name` = '$sql_author_name',
@@ -1335,10 +1346,11 @@ ON DUPLICATE KEY UPDATE
 	`updated` = '$sql_updated',
 	`published_offset` = '$sql_published_offset',
 	`updated_offset` = '$sql_updated_offset',
-	`is_displayed` = '$sql_is_displayed',
-	`is_blacklisted` = '$sql_is_blacklisted'
+	`is_displayed` = $sql_is_displayed,
+	`is_blacklisted` = $sql_is_blacklisted
 END;
 					$secondary_result = sql_query($sql);
+					// echo '<pre>', print_r($sql), '</pre>';
 
 					# if: query error
 					if ( $secondary_result === FALSE )
