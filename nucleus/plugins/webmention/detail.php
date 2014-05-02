@@ -66,8 +66,8 @@ END;
 		# if: do not display content for mentions
 		if ( $row['type'] == 'mention' )
 		{
-			$url_parts = parse_url($row['source']);
-			$content = sprintf('<a href="%s">%s</a> mentioned <a href="%s">%3$s</a>', $row['source'], $url_parts['host'], $row['target']);
+			$url_parts = parse_url($row['url']);
+			$content = sprintf('<a href="%s">%s</a> mentioned <a href="%s">%3$s</a>', $row['url'], $url_parts['host'], $row['target']);
 		}
 		# else: 
 		else
