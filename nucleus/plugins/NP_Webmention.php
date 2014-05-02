@@ -1177,9 +1177,11 @@ END;
 			'author_url'		=> '',
 			'published'			=> '',
 			'updated'			=> '',
-			'published_offset'	=> '',
-			'updated_offset'	=> ''
+			'published_offset'	=> 0,
+			'updated_offset'	=> 0,
 		);
+
+		sql_query("SET @@session.time_zone = 'UTC'");
 
 		$sql = <<< END
 SELECT *
