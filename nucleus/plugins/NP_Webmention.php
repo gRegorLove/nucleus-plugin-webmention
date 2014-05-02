@@ -689,10 +689,9 @@ END;
 				$endpoint = sprintf('%saction.php?action=plugin&name=Webmention&type=endpoint', $CONF['IndexURL']);
 			} # end if
 
-			// echo '<pre>', print_r($_SERVER), '</pre>';
-
 			print <<< END
 	<form method="post" action="{$endpoint}" id="webmention_form">
+	<h2> Send a Response </h2>
 	<p> <label for="i_webmention_source">Have you written a response to this? Let me know the link:</label> </p>
 	<p> <input type="text" name="source" id="i_webmention_source" required /> </p>
 	<div id="webmention_message"></div>
@@ -1271,8 +1270,6 @@ END;
 					}
 
 					$webmention = array_merge($default_fields, $webmention);
-
-					echo '<pre>', print_r($webmention); exit;
 
 					$parsed_content = ( empty($parsed_content) ) ? '' : json_encode($parsed_content);
 					$sql_parsed_content = sql_real_escape_string($parsed_content);
