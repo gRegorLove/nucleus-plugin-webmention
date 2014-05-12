@@ -146,13 +146,12 @@ END;
 	<table>
 		<tr>
 			<th> ID </th>
-			<th> Type </th>
-			<th> Content </th>
 			<th> Author </th>
-			<th> Detail </th>
+			<th> Content </th>
+			<th> Processed </th>
 			<th> Source </th>
 			<th> Target </th>
-			<th> Processed </th>
+			<th> Detail </th>
 		</tr>
 END;
 
@@ -176,13 +175,12 @@ END;
 			print <<< END
 		<tr>
 			<td class="center"> {$row['id']} </td>
-			<td> {$row['type']} </td>
-			<td> {$content} </td>
 			<td style="white-space: nowrap;"> {$link_author} </td>
-			<td> {$link_detail} </td>
-			<td> {$link_source} </td>
-			<td> {$link_target} </td>
-			<td> {$row['processed_date']} </td>
+			<td style="width: 50%;"> {$content} </td>
+			<td style="text-align: center;"> {$row['processed_date']} </td>
+			<td style="text-align: center;"> {$link_source} </td>
+			<td style="text-align: center;"> {$link_target} </td>
+			<td style="text-align: center;"> {$link_detail} </td>
 		</tr>
 END;
 		} # end loop
@@ -190,6 +188,21 @@ END;
 		print <<< END
 	</table>
 END;
+		$pagination_links = '';
+
+		if ( $page > 1 )
+		{
+			$pagination_links .= sprintf('<a href="plugins/webmention/?p=%d">&laquo; Previous</a> | ', $page - 1);
+		}
+
+		$pagination_links .= sprintf(' Page %d ', $page);
+
+		if ( $page < $page_limit )
+		{
+			$pagination_links .= sprintf(' | <a href="plugins/webmention/?p=%d">Next &raquo;</a>', $page + 1);
+		}
+
+		echo sprintf('<p> %s </p>', $pagination_links);
 	} # end if
 
 	echo '<h3> Whitelisted Hostnames </h3>';

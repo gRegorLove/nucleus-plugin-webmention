@@ -63,11 +63,17 @@ END;
 	{
 		$row = sql_fetch_assoc($result);
 
+		$type = $row['type'];
+
+		if ( $row['is_like'] )
+		{
+			$type .= ', like';
+		}
+
 		# if: do not display content for mentions
 		if ( $row['type'] == 'mention' )
 		{
-			$url_parts = parse_url($row['url']);
-			$content = sprintf('<a href="%s">%s</a> mentioned <a href="%s">%3$s</a>', $row['url'], $url_parts['host'], $row['target']);
+			$content = sprintf('mentioned <a href="%s">%1$s</a>', $row['target']);
 		}
 		# else: 
 		else
@@ -119,15 +125,15 @@ END;
 		</tr>
 		<tr>
 			<td> Type </td>
-			<td> {$row['type']} </td>
-		</tr>
-		<tr>
-			<td> Content </td>
-			<td> {$content} </td>
+			<td> {$type} </td>
 		</tr>
 		<tr>
 			<td> Author </td>
 			<td> {$row['author_name']} </td>
+		</tr>
+		<tr>
+			<td> Content </td>
+			<td> {$content} </td>
 		</tr>
 		<tr>
 			<td> Author URL </td>
