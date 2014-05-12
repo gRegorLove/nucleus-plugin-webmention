@@ -95,6 +95,24 @@ END;
 
 	$query = <<< END
 SELECT
+	COUNT(*)
+FROM 
+	`{$table_webmentions}` AS `w`
+WHERE 
+	`w`.`is_blacklisted` = 0
+	AND `w`.`deleted` IS NULL
+END;
+	$result = sql_query($query);
+
+	$total_webmentions = sql_result($result, 0);
+	$webmentions_per_page = 20;
+	$page = intval(requestVar('p'));
+	$page = max($page, 1);
+	$lower_limit = ($page - 1) * $webmentions_per_page;
+	$page_limit = ceil($total_webmentions / $webmentions_per_page);
+
+	$query = <<< END
+SELECT
 	`w`.*,
 	`r`.`source`,
 	`r`.`target`,
@@ -105,11 +123,12 @@ FROM
 	`{$table_received}` AS `r`
 WHERE 
 	`r`.`id` = `w`.`log_id`
-	AND `w`.`is_blacklisted` = 0
 	AND `r`.`deleted` IS NULL
+	AND `w`.`is_blacklisted` = 0
+	AND `w`.`deleted` IS NULL
 ORDER BY 
 	`r`.`modified` DESC 
-LIMIT 20
+LIMIT {$lower_limit}, {$webmentions_per_page}
 END;
 	$result = sql_query($query);
 

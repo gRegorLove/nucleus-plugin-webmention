@@ -270,6 +270,7 @@ CREATE TABLE IF NOT EXISTS `{$this->table}` (
 	`updated_offset` tinyint(1) unsigned NOT NULL DEFAULT '0',
 	`is_displayed` tinyint(1) unsigned NOT NULL DEFAULT '0',
 	`is_blacklisted` tinyint(1) unsigned NOT NULL DEFAULT '0',
+	`deleted` timestamp NULL DEFAULT NULL,
 	PRIMARY KEY (`id`),
 	UNIQUE KEY `POSTWEBMENTION` (`post_id`,`log_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8
@@ -414,6 +415,7 @@ FROM
 WHERE 
 	`is_displayed` = 1
 	AND `is_blacklisted` = 0
+	AND `deleted` IS NULL
 ORDER BY 
 	`updated` DESC
 LIMIT 20
@@ -532,6 +534,7 @@ FROM
 WHERE
 	`is_displayed` = 1
 	AND `post_id` = {$itemid}
+	AND `deleted` IS NULL
 
 UNION ALL
 
@@ -1203,6 +1206,7 @@ END;
 			while ( $row = sql_fetch_assoc($result) )
 			{
 				$sql_log_id = $sql_id = intval($row['id']);
+				$sql_post_id = intval($row['post_id']);
 
 				$webmention = array(
 					'url'	=> $row['source']
@@ -1211,12 +1215,35 @@ END;
 				$parsed_content = '';
 
 				$ch = curl_init();
+				curl_setopt($ch, CURLOPT_FOLLOWLOCATION, TRUE);
+				curl_setopt($ch, CURLOPT_MAXREDIRS, 10);
 				curl_setopt($ch, CURLOPT_URL, $row['source']);
 				curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
 				$html = curl_exec($ch);
+				$info = curl_getinfo($ch);
 
-				# if: target URL not found in source URL
-				if ( strpos($html, $row['target']) === FALSE )
+				# if: webmention source is HTTP 410, mark it as deleted
+				if ( $info['http_code'] == 410 )
+				{
+					$sql = <<< END
+UPDATE `{$this->table}` SET
+	`deleted` = NOW()
+WHERE 
+	`log_id` = {$sql_log_id}
+END;
+					$secondary_result = sql_query($sql);
+
+					$sql = <<< END
+UPDATE `{$this->table_received_log}` SET
+	`processed` = NOW()
+WHERE
+	`id` = {$sql_id}
+LIMIT 1
+END;
+					$secondary_result = sql_query($sql);
+				}
+				# else if: target URL not found in source URL
+				else if ( strpos($html, $row['target']) === FALSE )
 				{
 					$content = sprintf('%s not found in %s', $row['target'], $row['source']);
 					$sql_parsed_content = sql_real_escape_string($content);
