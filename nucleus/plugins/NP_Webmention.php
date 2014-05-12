@@ -585,11 +585,26 @@ END;
 					# if: local comment
 					if ( $row['type'] == 'local' )
 					{
+						$element_id = sprintf('c%d', $row['comment_id']);
+
 						$h_card = '&nbsp;';
 
-						$webmention_context = sprintf('<p class="reply-context"> <strong><a href="%s" class="p-author h-card">%s</a></strong>: </p>',
-							$row['author_url'],
-							$row['author_name']
+						if ( $row['author_url'] )
+						{
+							$author_link = sprintf('<a href="%s" class="p-author h-card">%s</a>',
+								$row['author_url'],
+								$row['author_name']
+							);
+						}
+						else
+						{
+							$author_link = sprintf('<span class="p-author h-card">%s</span>',
+								$row['author_name']
+							);
+						}
+
+						$webmention_context = sprintf('<p class="reply-context"> <strong>%s</strong>: </p>',
+							$author_link
 						);
 
 						$content = sprintf('<div class="p-content p-name"> %s </div>',
@@ -610,18 +625,41 @@ END;
 					# else: webmention
 					else
 					{
+						$element_id = sprintf('w%d', $row['webmention_id']);
+
 						$h_card = sprintf('<a href="%s" class="p-author h-card"><img src="%s" alt="%s" title="%3$s" class="u-photo" /></a> ',
 							$row['author_url'],
 							$row['author_photo'],
 							$row['author_name']
 						);
 
-						$verb = ( $row['type'] == 'mention' ) ? 'mentioned this.' : '';
+						# if: mentioned
+						if ( $row['type'] == 'mention' )
+						{
+							$verbs = array();
 
-						$webmention_context = sprintf('<p class="reply-context"> <strong><a href="%s">%s</a></strong> %s </p>',
+							# if: liked
+							if ( $row['is_like'] )
+							{
+								$verbs[] = 'liked';
+							}
+							else
+							{
+								$verbs[] = 'mentioned';
+							}
+
+							$verb_phrase = sprintf(' %s this', implode(', ', $verbs));
+						}
+						# else: replied
+						else
+						{
+							$verb_phrase = ':';
+						} # end if
+
+						$webmention_context = sprintf('<p class="reply-context"> <strong><a href="%s">%s</a></strong>%s </p>',
 							$row['author_url'],
 							$row['author_name'],
-							$verb
+							$verb_phrase
 						);
 
 						switch ( $row['type'] )
@@ -660,7 +698,7 @@ END;
 						);
 					} # end if
 
-					echo '<div class="mention p-comment h-cite">';
+					echo sprintf('<div id="%s" class="mention p-comment h-cite">', $element_id);
 
 					echo sprintf('<div class="avatar"> %s </div>',
 						$h_card
