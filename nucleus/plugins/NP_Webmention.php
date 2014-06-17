@@ -181,6 +181,8 @@ class NP_Webmention extends NucleusPlugin
 		$this->table_sent_log = sql_table('plugin_webmention_sent_logs');
 		$this->table_whitelist = sql_table('plugin_webmention_whitelist');
 		$this->table_blacklist = sql_table('plugin_webmention_blacklist');
+		$this->table_author_urls = sql_table('plugin_webmention_author_urls');
+		$this->table_related = sql_table('plugin_webmention_related');
 		$this->table = sql_table('plugin_webmentions');
 	} # end method init()
 
@@ -515,6 +517,42 @@ END;
 			$comment_table = sql_table('comment');
 			$member_table = sql_table('member');
 
+			$sql = <<< END
+SELECT
+	`w`.*,
+	`r`.`related_to`
+FROM 
+	`{$this->table}` AS `w`,
+	`{$this->table_related}` AS `r`
+WHERE 
+	`w`.`post_id` = $itemid
+	AND `w`.`id` = `r`.`webmention_id`
+END;
+
+			$result = sql_query($sql);
+
+			$meta = array();
+			$exclude_webmentions = array();
+
+			# loop: each row
+			while ( $row = sql_fetch_assoc($result) )
+			{
+				$key = $row['related_to'];
+				$exclude_webmentions[] = $row['id'];
+
+				$meta[$key] = $row;
+			} # end loop
+
+			echo '<!-- ', print_r($meta), ' -->';
+
+			$sql_exclude_webmentions = '';
+
+			# if: 
+			if ( $exclude_webmentions )
+			{
+				$sql_exclude_webmentions = sprintf('AND `w`.`id` NOT IN (%s)', implode(', ', $exclude_webmentions));
+			} # end if
+
 			$query = <<< END
 SELECT
 	`w`.`id` AS `webmention_id`,
@@ -535,6 +573,7 @@ WHERE
 	`is_displayed` = 1
 	AND `post_id` = {$itemid}
 	AND `deleted` IS NULL
+	{$sql_exclude_webmentions}
 
 UNION ALL
 
@@ -568,13 +607,6 @@ END;
 				$hostname = parse_url($CONF['IndexURL'], PHP_URL_HOST);
 
 				print <<< END
-	<style type="text/css">
-		.responses .note p {
-			font-size: 0.8em;
-			line-height: 1.6;
-		}
-	</style>
-
 	<div class="responses">
 END;
 
@@ -637,30 +669,7 @@ END;
 							$row['author_name']
 						);
 
-						# if: mentioned
-						if ( $row['type'] == 'mention' )
-						{
-							$verbs = array();
-
-							# if: liked
-							if ( $row['is_like'] )
-							{
-								$verbs[] = 'liked';
-							}
-							else
-							{
-								$verbs[] = 'mentioned';
-							}
-
-							$verb_phrase = sprintf(' %s this', implode(', ', $verbs));
-						}
-						# else: replied
-						else
-						{
-							$verb_phrase = ':';
-						} # end if
-
-						$webmention_context = sprintf('<p class="reply-context"> <strong><a href="%s">%s</a></strong>%s </p>',
+						$webmention_context = sprintf('<p class="reply-context"> <strong><a href="%s">%s</a></strong>: </p>',
 							$row['author_url'],
 							$row['author_name'],
 							$verb_phrase
@@ -678,6 +687,45 @@ END;
 								$content = '';
 							break;
 						}
+
+						# if: meta information for this webmention
+						if ( !empty($meta[$row['webmention_id']]) || $row['is_like'] )
+						{
+
+							if ( !empty($meta[$row['webmention_id']]) )
+							{
+								$temp_content = rtrim($meta[$row['webmention_id']]['content'], '. ');
+								$temp_url = $meta[$row['webmention_id']]['url'];
+							}
+							else
+							{
+								$temp_content = 'likes this ';
+								$temp_url = $row['url'];
+							}
+
+							$hostname = parse_url($temp_url, PHP_URL_HOST);
+
+							switch ( $hostname )
+							{
+								case 'facebook.com':
+									$temp_site_name = 'Facebook';
+								break;
+
+								case 'twitter.com':
+									$temp_site_name = 'Twitter';
+								break;
+
+								default:
+									$temp_site_name = $hostname;
+								break;
+							}
+
+							$content .= sprintf('<p class="p-meta"> %s on <a href="%s">%s</a> </p>',
+								$temp_content,
+								$temp_url,
+								$temp_site_name
+							);
+						} # end if
 
 						$published_timezone = new DateTimeZone('UTC');
 						$published = new DateTime($row['updated'], $published_timezone);
@@ -1200,12 +1248,12 @@ END;
 
 
 	/**
-	 * This method handles processing the received webmentions.
-	 * It is verified that the target URL appears in the source, and
-	 * h-entry/h-card are parsed from the source if possible.
-	 * @access public
+	 * This method handles processing a single webmention.
+	 * @param array $data 
+	 * @access private
+	 * @return bool
 	 */
-	public function processWebmentions()
+	private function processWebmention($data)
 	{
 		include('webmention/Mf2/Parser.php');
 		include('webmention/Mf2/Functions.php');
@@ -1228,71 +1276,50 @@ END;
 			'updated_offset'	=> 0,
 		);
 
-		sql_query("SET @@session.time_zone = 'UTC'");
+		$sql_log_id = $sql_id = intval($data['id']);
+		$sql_post_id = intval($data['post_id']);
 
-		$sql = <<< END
-SELECT *
-FROM
-	`{$this->table_received_log}`
-WHERE
-	(
-		`processed` IS NULL
-		OR `modified` > `processed`
-	)
-	AND `deleted` IS NULL
-END;
-		$result = sql_query($sql);
+		$webmention = array(
+			'url'		=> $data['source'],
+			'published'	=> $data['created'],
+		);
 
-		# if: one or more results
-		if ( sql_num_rows($result) > 0 )
+		$parsed_content = '';
+
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_FOLLOWLOCATION, TRUE);
+		curl_setopt($ch, CURLOPT_MAXREDIRS, 10);
+		curl_setopt($ch, CURLOPT_URL, $data['source']);
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+		$html = curl_exec($ch);
+		$info = curl_getinfo($ch);
+
+		# if: webmention source is HTTP 410, mark it as deleted
+		if ( $info['http_code'] == 410 )
 		{
-
-			# loop: each result row
-			while ( $row = sql_fetch_assoc($result) )
-			{
-				$sql_log_id = $sql_id = intval($row['id']);
-				$sql_post_id = intval($row['post_id']);
-
-				$webmention = array(
-					'url'	=> $row['source']
-				);
-
-				$parsed_content = '';
-
-				$ch = curl_init();
-				curl_setopt($ch, CURLOPT_FOLLOWLOCATION, TRUE);
-				curl_setopt($ch, CURLOPT_MAXREDIRS, 10);
-				curl_setopt($ch, CURLOPT_URL, $row['source']);
-				curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
-				$html = curl_exec($ch);
-				$info = curl_getinfo($ch);
-
-				# if: webmention source is HTTP 410, mark it as deleted
-				if ( $info['http_code'] == 410 )
-				{
-					$sql = <<< END
+			$sql = <<< END
 UPDATE `{$this->table}` SET
 	`deleted` = NOW()
 WHERE 
 	`log_id` = {$sql_log_id}
 END;
-					$secondary_result = sql_query($sql);
+			$result = sql_query($sql);
 
-					$sql = <<< END
+			$sql = <<< END
 UPDATE `{$this->table_received_log}` SET
 	`processed` = NOW()
 WHERE
 	`id` = {$sql_id}
 LIMIT 1
 END;
-					$secondary_result = sql_query($sql);
-				}
-				# else if: target URL not found in source URL
-				else if ( strpos($html, $row['target']) === FALSE )
-				{
-					$content = sprintf('%s not found in %s', $row['target'], $row['source']);
-					$sql_parsed_content = sql_real_escape_string($content);
-					$sql = <<< END
+			$result = sql_query($sql);
+		}
+		# else if: target URL not found in source URL
+		else if ( strpos($html, $data['target']) === FALSE )
+		{
+			$content = sprintf('%s not found in %s', $data['target'], $data['source']);
+			$sql_parsed_content = sql_real_escape_string($content);
+			$sql = <<< END
 UPDATE `{$this->table_received_log}` SET
 	`parsed_content` = '{$sql_parsed_content}',
 	`processed` = NOW()
@@ -1300,53 +1327,53 @@ WHERE
 	`id` = {$sql_id}
 LIMIT 1
 END;
-					$secondary_result = sql_query($sql);
-				}
-				# else: target URL found in source URL
-				else
+			$result = sql_query($sql);
+		}
+		# else: target URL found in source URL
+		else
+		{
+
+			# if: microformat(s) found at URL
+			if ( $parsed_content = $this->fetchMicroformats($html) )
+			{
+
+				# if: parsed the first h-entry successfully
+				if ( $entry = $this->parseFirstEntry($parsed_content, $webmention) )
 				{
 
-					# if: microformat(s) found at URL
-					if ( $parsed_content = $this->fetchMicroformats($html) )
+					# if: author h-card not found
+					if ( !$this->parseAuthor($entry, $webmention) )
 					{
 
-						# if: parsed the first h-entry successfully
-						if ( $entry = $this->parseFirstEntry($parsed_content, $webmention) )
+						# if: rel-author with h-card not found either, use defaults
+						if ( !$this->parseRelAuthor($parsed_content, $webmention) )
 						{
+							$this->parseDefaultAuthor($data['source'], $webmention);
+						} # end if
 
-							# if: author h-card not found
-							if ( !$this->parseAuthor($entry, $webmention) )
-							{
+					} # end if: author h-card not found...
 
-								# if: rel-author with h-card not found either, use defaults
-								if ( !$this->parseRelAuthor($parsed_content, $webmention) )
-								{
-									$this->parseDefaultAuthor($row['source'], $webmention);
-								} # end if
+				} # end if: parsed the first...
 
-							} # end if: author h-card not found...
+			}
+			# else: no microformats found
+			else
+			{
+				$this->parseDefaultAuthor($data['source'], $webmention);
+			} # end if: microformat(s) found...		
 
-						} # end if: parsed the first...
+			# if: if like-of matches target, set the flag
+			if ( $webmention['like-of'] == $data['target'] )
+			{
+				$webmention['is_like'] = 1;
+			}
 
-					}
-					# else: no microformats found
-					else
-					{
-						$this->parseDefaultAuthor($row['source'], $webmention);
-					} # end if: microformat(s) found...		
+			$webmention = array_merge($default_fields, $webmention);
 
-					# if: if like-of matches target, set the flag
-					if ( $webmention['like-of'] == $row['target'] )
-					{
-						$webmention['is_like'] = 1;
-					}
+			$parsed_content = ( empty($parsed_content) ) ? '' : json_encode($parsed_content, JSON_PRETTY_PRINT);
+			$sql_parsed_content = sql_real_escape_string($parsed_content);
 
-					$webmention = array_merge($default_fields, $webmention);
-
-					$parsed_content = ( empty($parsed_content) ) ? '' : json_encode($parsed_content);
-					$sql_parsed_content = sql_real_escape_string($parsed_content);
-
-					$sql = <<< END
+			$sql = <<< END
 UPDATE `{$this->table_received_log}` SET
 	`parsed_content` = '{$sql_parsed_content}',
 	`processed` = NOW()
@@ -1354,36 +1381,37 @@ WHERE
 	`id` = {$sql_id}
 LIMIT 1
 END;
-					$secondary_result = sql_query($sql);
+			$result = sql_query($sql);
 
-					# if: query error
-					if ( $secondary_result === FALSE )
-					{
-						$this->httpResponse(500, 'text/html', 'There was an error parsing the webmention.');
-					} # end if
+			# if: query error
+			if ( $result === FALSE )
+			{
+				$this->httpResponse(500, 'text/html', 'There was an error parsing the webmention.');
+			} # end if
 
-					$is_whitelisted = $this->is_hostname_listed($row['source'], 'whitelist');
-					$is_blacklisted = $this->is_hostname_listed($row['source'], 'blacklist');
+			$is_whitelisted = $this->is_hostname_listed($data['source'], 'whitelist');
+			$is_blacklisted = $this->is_hostname_listed($data['source'], 'blacklist');
 
-					$sql_post_id = intval($row['post_id']);
-					$sql_type = sql_real_escape_string($webmention['type']);
-					$sql_is_like = intval($webmention['is_like']);
-					$sql_is_repost = intval($webmention['is_repost']);
-					$sql_is_rsvp = intval($webmention['is_rsvp']);
-					$sql_content = sql_real_escape_string($webmention['content']);
-					$sql_url = sql_real_escape_string($webmention['url']);
-					$sql_author_name = sql_real_escape_string($webmention['author_name']);
-					$sql_author_photo = sql_real_escape_string($webmention['author_photo']);
-					$sql_author_logo = sql_real_escape_string($webmention['author_logo']);
-					$sql_author_url = sql_real_escape_string($webmention['author_url']);
-					$sql_published = sql_real_escape_string($webmention['published']);
-					$sql_updated = sql_real_escape_string($webmention['updated']);
-					$sql_published_offset = sql_real_escape_string($webmention['published_offset']);
-					$sql_updated_offset = sql_real_escape_string($webmention['updated_offset']);
-					$sql_is_displayed = ( $is_whitelisted ) ? 1 : 0;
-					$sql_is_blacklisted = ( $is_blacklisted ) ? 1 : 0;
+			$sql_post_id = intval($data['post_id']);
+			$sql_type = sql_real_escape_string($webmention['type']);
+			$sql_is_like = intval($webmention['is_like']);
+			$sql_is_repost = intval($webmention['is_repost']);
+			$sql_is_rsvp = intval($webmention['is_rsvp']);
+			$sql_content = sql_real_escape_string($webmention['content']);
+			$sql_url = sql_real_escape_string($webmention['url']);
+			$sql_author_name = sql_real_escape_string($webmention['author_name']);
+			$sql_author_photo = sql_real_escape_string($webmention['author_photo']);
+			$sql_author_logo = sql_real_escape_string($webmention['author_logo']);
+			$author_url = reset($webmention['author_url']);
+			$sql_author_url = sql_real_escape_string($author_url);
+			$sql_published = sql_real_escape_string($webmention['published']);
+			$sql_updated = sql_real_escape_string($webmention['updated']);
+			$sql_published_offset = sql_real_escape_string($webmention['published_offset']);
+			$sql_updated_offset = sql_real_escape_string($webmention['updated_offset']);
+			$sql_is_displayed = ( $is_whitelisted ) ? 1 : 0;
+			$sql_is_blacklisted = ( $is_blacklisted ) ? 1 : 0;
 
-					$sql = <<< END
+			$sql = <<< END
 INSERT INTO `{$this->table}` SET
 	`post_id` = $sql_post_id,
 	`log_id` = $sql_log_id,
@@ -1417,25 +1445,160 @@ ON DUPLICATE KEY UPDATE
 	`updated` = '$sql_updated',
 	`published_offset` = '$sql_published_offset',
 	`updated_offset` = '$sql_updated_offset',
-	`is_displayed` = $sql_is_displayed,
-	`is_blacklisted` = $sql_is_blacklisted
+	`is_blacklisted` = $sql_is_blacklisted,
+	`id` = LAST_INSERT_ID(`id`)
 END;
-					$secondary_result = sql_query($sql);
-					// echo '<pre>', print_r($sql), '</pre>';
+			$result = sql_query($sql);
 
-					# if: query error
-					if ( $secondary_result === FALSE )
-					{
-						$this->httpResponse(500, 'text/html', 'There was an error parsing the webmention.');
-					} # end if
+			# if: query error
+			if ( $result === FALSE )
+			{
+				$this->httpResponse(500, 'text/html', 'There was an error parsing the webmention.');
+			} # end if
 
-				} # end if: target URL found...
+			$webmention_id = sql_insert_id();
 
+			$author_urls = array_map('sql_real_escape_string', $webmention['author_url']);
+			$sql_author_urls = sprintf("'%s'", implode("', '", $author_urls));
+
+			$sql = <<< END
+SELECT 
+	`au`.`webmention_id`
+FROM 
+	`{$this->table_author_urls}` AS `au`,
+	`{$this->table}` AS `w`
+WHERE
+	`w`.`post_id` = {$sql_post_id}
+	AND `w`.`type` <> 'mention'
+	AND `w`.`id` = `au`.`webmention_id`
+	AND `au`.`url` IN ( {$sql_author_urls} )
+END;
+			$result = sql_query($sql);
+
+			if ( sql_num_rows($result) > 0 )
+			{
+				$row = sql_fetch_assoc($result);
+
+				$sql = <<< END
+INSERT INTO `{$this->table_related}` SET 
+	`webmention_id` = $webmention_id,
+	`related_to` = '{$row['webmention_id']}'
+END;
+				$result = sql_query($sql);
+			}
+
+			# delete existing author URLs
+			$sql = <<< END
+UPDATE `{$this->table_author_urls}` SET 
+	`deleted` = NOW()
+WHERE 
+	`webmention_id` = '$webmention_id' 
+	AND `deleted` IS NULL
+END;
+			$result = sql_query($sql);
+
+			# loop: each author URL
+			foreach ( $webmention['author_url'] as $url )
+			{
+				$url = sql_real_escape_string($url);
+				$sql = <<< END
+INSERT INTO `{$this->table_author_urls}` SET 
+	`webmention_id` = {$webmention_id},
+	`url` = '{$url}',
+	`created` = NOW(),
+	`modified` = NOW()
+END;
+				$result = sql_query($sql);
+			} # end loop
+
+		} # end if: target URL found...
+
+		return TRUE;
+	} # end method processWebmention()
+
+
+	/**
+	 * This method handles processing a webmention by its ID
+	 * @param int $id 
+	 * @access public
+	 * @return bool
+	 */
+	public function processWebmentionByID($id)
+	{
+		$id = intval($id);
+
+		sql_query("SET @@session.time_zone = 'UTC'");
+
+		$sql = <<< END
+SELECT `r`.*
+FROM
+	`{$this->table_received_log}` AS `r`,
+	`{$this->table}` AS `w`
+WHERE
+	`w`.`id` = {$id}
+	AND `r`.`id` = `w`.`log_id`
+	AND `r`.`deleted` IS NULL
+LIMIT 1
+END;
+		$result = sql_query($sql);
+
+		# if: one result returned
+		if ( sql_num_rows($result) == 1 )
+		{
+			$row = sql_fetch_assoc($result);
+			$this->processWebmention($row);
+			echo sprintf('<p> Webmention processed successfully. </p>');
+		}
+		# else: no results returned
+		else
+		{
+			echo sprintf('<p> No webmention was found matching that ID. </p>');
+		} # end if
+
+	} # end method processWebmentionByID()
+
+
+	/**
+	 * This method handles processing the received webmentions.
+	 * It is verified that the target URL appears in the source, and
+	 * h-entry/h-card are parsed from the source if possible.
+	 * @access public
+	 */
+	public function processWebmentions()
+	{
+		sql_query("SET @@session.time_zone = 'UTC'");
+
+		$sql = <<< END
+SELECT *
+FROM
+	`{$this->table_received_log}`
+WHERE
+	(
+		`processed` IS NULL
+		OR `modified` > `processed`
+	)
+	AND `deleted` IS NULL
+END;
+		$result = sql_query($sql);
+
+		# if: one or more results
+		if ( sql_num_rows($result) > 0 )
+		{
+
+			# loop: each result row
+			while ( $row = sql_fetch_assoc($result) )
+			{
+				$this->processWebmention($row);
 			} # end loop: each result row
 
+			echo sprintf('<p> Webmentions processed successfully. </p>');
+		}
+		# else: no results
+		else
+		{
+			echo sprintf('<p> There are no webmentions to process currently. </p>');
 		} # end if: one or more results
 
-		$this->httpResponse(200, 'text/html', 'Webmentions processed successfully');
 	} # end method processWebmentions()
 
 
@@ -1762,7 +1925,7 @@ END;
 			$results['author_name'] = Mf2\getPlaintext($author, 'name');
 			$results['author_photo'] = Mf2\getPlaintext($author, 'photo');
 			$results['author_logo'] = Mf2\getPlaintext($author, 'logo');
-			$results['author_url'] = Mf2\getPlaintext($author, 'url');
+			$results['author_url'] = Mf2\getPlaintextArray($author, 'url');
 
 			return TRUE;
 		}
