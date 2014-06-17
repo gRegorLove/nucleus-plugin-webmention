@@ -585,6 +585,8 @@ END;
 					# if: local comment
 					if ( $row['type'] == 'local' )
 					{
+						$class_h_cite = '';
+
 						$element_id = sprintf('c%d', $row['comment_id']);
 
 						$h_card = '&nbsp;';
@@ -625,6 +627,8 @@ END;
 					# else: webmention
 					else
 					{
+						$class_h_cite = ' h-cite';
+
 						$element_id = sprintf('w%d', $row['webmention_id']);
 
 						$h_card = sprintf('<a href="%s" class="p-author h-card"><img src="%s" alt="%s" title="%3$s" class="u-photo" /></a> ',
@@ -698,7 +702,10 @@ END;
 						);
 					} # end if
 
-					echo sprintf('<div id="%s" class="mention p-comment h-cite">', $element_id);
+					echo sprintf('<div id="%s" class="mention p-comment%s">',						
+						$element_id,
+						$class_h_cite
+					);
 
 					echo sprintf('<div class="avatar"> %s </div>',
 						$h_card
