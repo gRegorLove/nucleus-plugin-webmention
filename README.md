@@ -1,5 +1,9 @@
 # Webmention Nucleus Plugin
 
+**As of 2015-07-12 I am no longer using Nucleus CMS on my site or maintaining this plugin.**
+
+**If you would like to continue maintaining this plugin's code, I'm willing to transfer ownership of the repository. Pull requests and forks are also welcome.**
+
 [Nucleus CMS](http://nucleuscms.org) plugin to send and receive webmentions.
 
 [Webmention](http://webmention.org) is a simple way to automatically notify any URL when you link to it on your site. From the receiver's perpective, it is a way to request notification when other sites link to it.
